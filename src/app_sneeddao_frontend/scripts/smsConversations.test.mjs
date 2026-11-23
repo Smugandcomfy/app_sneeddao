@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     conversationOf, keyOf, othersOfKey, groupConversations, threadRows, baseSubject, replySubject,
-    defaultSubject, previewOf, NOTES_KEY,
+    defaultSubject, previewOf, NOTES_KEY, keyFromWithParam,
 } from '../src/utils/smsConversations.js';
 
 const ME = 'me-aaaa';
@@ -104,4 +104,21 @@ test('subjects: Re: once, default from the last subject or the body', () => {
 test('preview: one line, markdown marks dropped', () => {
     assert.equal(previewOf('**Hi** [there](https://x.y)\n\nnew `line`'), 'Hi there new line');
     assert.equal(previewOf('a'.repeat(100), 10).length, 10);
+});
+
+test('?with= on /messenger: a key from comma-separated principals, invalid ones and me dropped', () => {
+    const isValid = (t) => /^[a-z]+-[a-z]{4}$/.test(t); // the page passes Principal.fromText
+    assert.equal(keyFromWithParam(A, ME, isValid), A);
+    assert.equal(keyFromWithParam(`${B},${A}`, ME, isValid), keyFromWithParam(`${A},${B}`, ME, isValid), 'any order');
+    assert.equal(keyFromWithParam(`${A}, ${B}`, ME, isValid), `${A},${B}`, 'spaces around commas');
+    assert.equal(keyFromWithParam(`${A},${A}`, ME, isValid), A, 'duplicates');
+    assert.equal(keyFromWithParam(`${A},${ME}`, ME, isValid), A, 'me dropped');
+    assert.equal(keyFromWithParam(ME, ME, isValid), NOTES_KEY, 'only me: notes to self');
+    assert.equal(keyFromWithParam(`${A},not a principal`, ME, isValid), A, 'an invalid entry among valid ones');
+    assert.equal(keyFromWithParam('nope,???', ME, isValid), null, 'all invalid: the list');
+    assert.equal(keyFromWithParam('', ME, isValid), null);
+    assert.equal(keyFromWithParam(null, ME, isValid), null);
+    assert.equal(keyFromWithParam(A, ME, () => { throw new Error('bad'); }), null, 'a throwing check counts as invalid');
+    // the same key the grouping gives that conversation
+    assert.equal(keyFromWithParam(`${B},${A}`, ME, isValid), conversationOf(msg(B, [ME, A]), ME).key);
 });

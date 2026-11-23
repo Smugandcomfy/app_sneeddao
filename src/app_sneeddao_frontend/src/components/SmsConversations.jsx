@@ -37,6 +37,16 @@ const css = `
 .sms-conv-row { transition: background 0.15s ease; }
 `;
 
+// only drawn when the `fill` or `narrow` prop is on, so /sms renders as before
+const cssFillNarrow = `
+.sms-conv-layout.sms-conv-fill { height: 100%; grid-template-rows: minmax(0, 1fr); }
+.sms-conv-layout.sms-conv-fill .sms-conv-pane { height: 100%; min-height: 0; }
+.sms-conv-layout.sms-conv-narrow { grid-template-columns: minmax(0, 1fr); }
+.sms-conv-layout.sms-conv-narrow.has-open .sms-conv-list { display: none !important; }
+.sms-conv-layout.sms-conv-narrow:not(.has-open) .sms-conv-thread { display: none !important; }
+.sms-conv-layout.sms-conv-narrow .sms-conv-back { display: inline-flex !important; }
+`;
+
 const shortTime = (ns) => new Date(Number(ns) / 1e6).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 function dayLabel(dayText) {
@@ -59,9 +69,12 @@ function dayLabel(dayText) {
 ///   accent, accentDark  the page's accent colours
 ///   onOpenMessage(message)  the page's message details (Reply all, remove, thread)
 ///   initialKey    a conversation to open first
+///   fill          the panes take the container's full height instead of 72% of the screen (/messenger)
+///   narrow        one pane at any width (the list, or the open conversation with a back arrow)
+///   onActiveChange(key)  told which conversation is open (null: none), e.g. for a Pop out link
 export default function SmsConversations({
     me, received, sent, unreadMark, loaded, hasOlder, loadingOlder, onLoadOlder, send, limits,
-    accent, accentDark, onOpenMessage, initialKey = null,
+    accent, accentDark, onOpenMessage, initialKey = null, fill = false, narrow = false, onActiveChange,
 }) {
     const { theme } = useTheme();
     const { principalNames, principalNicknames } = useNaming() || {};
@@ -73,6 +86,9 @@ export default function SmsConversations({
     const [sending, setSending] = useState(false);
     const scrollRef = useRef(null);
     const bodyRef = useRef(null);
+    const onActiveChangeRef = useRef(onActiveChange);
+    onActiveChangeRef.current = onActiveChange;
+    useEffect(() => { onActiveChangeRef.current?.(activeKey); }, [activeKey]);
 
     // grouping: once per change of the lists (not per conversation opened)
     const conversations = useMemo(
@@ -470,9 +486,10 @@ export default function SmsConversations({
     );
 
     return (
-        <div style={{ fontFamily: SYSTEM_FONT }}>
+        <div style={fill ? { fontFamily: SYSTEM_FONT, height: '100%' } : { fontFamily: SYSTEM_FONT }}>
             <style>{css}</style>
-            <div className={`sms-conv-layout${activeKey ? ' has-open' : ''}`}>
+            {(fill || narrow) && <style>{cssFillNarrow}</style>}
+            <div className={`sms-conv-layout${activeKey ? ' has-open' : ''}${fill ? ' sms-conv-fill' : ''}${narrow ? ' sms-conv-narrow' : ''}`}>
                 {list}
                 {thread}
             </div>

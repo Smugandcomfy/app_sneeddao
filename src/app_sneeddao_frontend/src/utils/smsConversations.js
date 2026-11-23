@@ -132,3 +132,18 @@ export function previewOf(body, max = 80) {
         .trim();
     return flat.length > max ? `${flat.slice(0, max - 1).trimEnd()}…` : flat;
 }
+
+/// The page's accent colours, shared by /sms and /messenger.
+export const SMS_ACCENT = '#3b82f6'; // Blue
+export const SMS_ACCENT_DARK = '#1d4ed8'; // Darker blue
+
+/// A conversation key from an address parameter (/messenger?with=a,b): comma-separated principal
+/// texts in any order. `isValid(text)` says whether one is a principal (the page passes a check with
+/// Principal.fromText). Invalid entries, duplicates and `me` are dropped. Null when nothing valid is left
+/// (the list is shown); only `me` gives the Notes to self conversation.
+export function keyFromWithParam(param, me, isValid) {
+    const parts = String(param ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    const valid = parts.filter((p) => { try { return !!isValid(p); } catch (_) { return false; } });
+    if (!valid.length) return null;
+    return keyOf(valid.filter((p) => p !== me));
+}

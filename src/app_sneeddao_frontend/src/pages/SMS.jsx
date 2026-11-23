@@ -12,6 +12,7 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
 import SmsConversations from '../components/SmsConversations';
+import { SMS_ACCENT, SMS_ACCENT_DARK } from '../utils/smsConversations';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { useSmsSend } from '../hooks/useSmsSend';
@@ -108,8 +109,8 @@ const customStyles = `
 `;
 
 // Accent colors for this page
-const smsPrimary = '#3b82f6'; // Blue
-const smsSecondary = '#1d4ed8'; // Darker blue
+const smsPrimary = SMS_ACCENT; // Blue (shared with /messenger)
+const smsSecondary = SMS_ACCENT_DARK; // Darker blue
 const smsAccent = '#60a5fa'; // Light blue
 
 // the view (tab) shown: ?view=… first, else the one last chosen on this device

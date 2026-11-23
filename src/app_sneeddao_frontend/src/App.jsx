@@ -98,6 +98,7 @@ import Tips from './pages/Tips';
 import Posts from './pages/Posts';
 import SMS from './pages/SMS';
 import Message from './pages/Message';
+import Messenger from './pages/Messenger';
 import Thread from './pages/Thread';
 import Post from './pages/Post';
 import Forum from './pages/Forum';
@@ -314,6 +315,7 @@ function App() {
                     <Route path="/posts" element={<Posts />} />
                     <Route path="/sms" element={<SMS />} />
                     <Route path="/msg/:id" element={<Message />} />
+                    <Route path="/messenger" element={<Messenger />} />
                     <Route path="/thread" element={<Thread />} />
                     <Route path="/post" element={<Post />} />
                     <Route path="/disclaimer" element={<Disclaimer />} />
