@@ -12,7 +12,7 @@ import { getRelativeTime, getFullDate } from '../utils/DateUtils';
 import PrincipalInput from '../components/PrincipalInput';
 import EmojiPicker from '../components/EmojiPicker';
 import SmsConversations from '../components/SmsConversations';
-import { SMS_ACCENT, SMS_ACCENT_DARK } from '../utils/smsConversations';
+import { SMS_ACCENT, SMS_ACCENT_DARK, othersOfKey } from '../utils/smsConversations';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
 import { useSmsSend } from '../hooks/useSmsSend';
@@ -146,6 +146,22 @@ const SMS = () => {
     const { capturedOldMessagesTimestamp, isMessageNew } = useSmsReadMark(sms, {
         onCaptured: (inbox) => { if (inbox.unreadCount > 0 && selectedTab !== 'conversations') setSelectedTabState('received'); },
     });
+    // Pop out: /messenger in a window of its own (one, reused), carrying the open conversation. A real
+    // link, so Ctrl/Cmd/middle-click give a tab, and a blocked pop-up falls back to a new tab.
+    const [conversationKey, setConversationKey] = useState(null);
+    const popOutHref = (() => {
+        if (!conversationKey) return '/messenger';
+        const others = othersOfKey(conversationKey);
+        const who = others.length ? others.join(',') : identity?.getPrincipal().toString();
+        return who ? `/messenger?with=${encodeURIComponent(who)}` : '/messenger';
+    })();
+    const popOut = (e) => {
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return; // the browser opens a tab
+        const w = window.open(popOutHref, 'sneed-messenger', 'popup,width=440,height=760');
+        if (!w) return; // pop-up blocked: the link opens a new tab
+        e.preventDefault();
+        w.focus();
+    };
     const setSelectedTab = (view) => {
         setSelectedTabState(view);
         try { localStorage.setItem(VIEW_KEY, view); } catch (_) { /* no storage */ }
@@ -739,8 +755,35 @@ const SMS = () => {
                         </button>
                     </div>
 
-                    {/* Refresh Button */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                    {/* Refresh Button (and, on Conversations, Pop out) */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '1rem' }}>
+                        {selectedTab === 'conversations' && (
+                            <a
+                                href={popOutHref}
+                                target="_blank"
+                                rel="noopener"
+                                onClick={popOut}
+                                title="Open just the messenger in its own window (Ctrl+click: a new tab)"
+                                style={{
+                                    background: theme.colors.tertiaryBg,
+                                    color: theme.colors.primaryText,
+                                    border: `1px solid ${theme.colors.border}`,
+                                    borderRadius: '10px',
+                                    padding: '0.6rem 1rem',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.5rem',
+                                    fontSize: '0.85rem',
+                                    fontWeight: '500',
+                                    fontFamily: SYSTEM_FONT,
+                                    textDecoration: 'none',
+                                    transition: 'all 0.2s ease'
+                                }}
+                            >
+                                <FaExternalLinkAlt size={12} />
+                                Pop out
+                            </a>
+                        )}
                         <button 
                             onClick={fetchMessages}
                             disabled={refreshing}
@@ -783,6 +826,7 @@ const SMS = () => {
                             accent={smsPrimary}
                             accentDark={smsSecondary}
                             onOpenMessage={(message) => { setSelectedMessage(message); setShowMessageModal(true); }}
+                            onActiveChange={setConversationKey}
                         />
                     ) : loading ? (
                         <div style={{

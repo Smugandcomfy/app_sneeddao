@@ -104,6 +104,7 @@ export default function HelpSms() {
                     <Li>Type in the box at the bottom and press send (or <Code>Ctrl+Enter</Code>) to write to everyone in the conversation. The message replies to the conversation's last message; its subject is <Code>Re:</Code> the last subject unless you type one. The usual limits apply.</Li>
                     <Li>Press <B>New</B> to start a conversation: add one or more people, then <B>Open conversation</B>.</Li>
                     <Li>Conversations are a view of the same messages: they are just as private (see above), not more.</Li>
+                    <Li><B>Just the messenger:</B> press <B>Pop out</B> on the Conversations tab to open your conversations alone in a small window of their own (Ctrl+click opens them in a new tab instead), or go to <B>/messenger</B>. In the installed app, the <B>Messages</B> shortcut on the app icon opens it. <B>Full view</B> takes you back here.</Li>
                 </List>
             </Section>
 

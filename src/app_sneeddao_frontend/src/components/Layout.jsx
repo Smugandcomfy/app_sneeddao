@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import LoginModal from './LoginModal';
 import PwaNavBar, { shouldShowPwaNav } from './PwaNavBar';
@@ -7,7 +8,10 @@ import './Layout.css';
 const Layout = ({ children }) => {
   const { showLoginModal, closeLoginModal } = useAuth();
   // Installed app only (no browser chrome there): our own Back / Forward / Refresh.
-  const [showPwaNav] = useState(shouldShowPwaNav);
+  const [pwaNav] = useState(shouldShowPwaNav);
+  // /messenger draws its own bar ("Full view" is the way back), so no nav bar there
+  const { pathname } = useLocation();
+  const showPwaNav = pwaNav && !pathname.startsWith('/messenger');
   // Bumped by the in-app Refresh on pages that don't listen for it: remounts the page so it fetches
   // again, keeping the app's login, contexts and scroll position.
   const [pageKey, setPageKey] = useState(0);
