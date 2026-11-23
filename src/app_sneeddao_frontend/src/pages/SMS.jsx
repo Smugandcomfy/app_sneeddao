@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import Header from '../components/Header';
 import { useTheme } from '../contexts/ThemeContext';
-import { createActor as createSmsActor } from '../../../declarations/sneed_sms';
 import { Principal } from '@dfinity/principal';
 import { PrincipalDisplay, getPrincipalDisplayInfoFromContext } from '../utils/PrincipalUtils';
 import BigAvatar from '../components/BigAvatar';
@@ -15,7 +14,8 @@ import EmojiPicker from '../components/EmojiPicker';
 import SmsConversations from '../components/SmsConversations';
 import MarkdownButtons from '../components/MarkdownButtons';
 import MarkdownBody from '../components/MarkdownBody';
-import { usePremiumStatus } from '../hooks/usePremiumStatus';
+import { useSmsSend } from '../hooks/useSmsSend';
+import { useSmsReadMark } from '../hooks/useSmsReadMark';
 import { appConfirm } from '../utils/appDialog';
 import { FaEnvelope, FaInbox, FaPaperPlane, FaFolderOpen, FaPen, FaSync, FaLock, FaReply, FaReplyAll, FaTrash, FaExternalLinkAlt, FaTimes, FaPlus, FaStar, FaChevronDown, FaChevronRight, FaUser, FaUsers, FaComments } from 'react-icons/fa';
 
@@ -122,16 +122,6 @@ const initialView = (searchParams) => {
     return 'received';
 };
 
-/// The text of a send_message error.
-const smsErrorText = (err) => {
-    if (err?.RateLimited) return `Rate Limited: ${err.RateLimited}`;
-    if (err?.InvalidInput) return `Invalid Input: ${err.InvalidInput}`;
-    if (err?.Unauthorized) return `Unauthorized: ${err.Unauthorized}`;
-    if (err?.NotFound) return `Not Found: ${err.NotFound}`;
-    if (err?.AlreadyExists) return `Already Exists: ${err.AlreadyExists}`;
-    return 'Failed to send message';
-};
-
 const SMS = () => {
     const { theme } = useTheme();
     const navigate = useNavigate();
@@ -142,8 +132,19 @@ const SMS = () => {
 
     // the shared, cached inbox (contexts/SmsContext.jsx): shown at once, then only new messages fetched
     const sms = useSmsInbox({ active: true });
+    // sending, limits and premium (hooks/useSmsSend.js), and the "new since I opened" mark (hooks/useSmsReadMark.js)
+    const {
+        getSmsActor, submitSms, config, premiumConfig, isPremium,
+        effectiveSubjectLimit, effectiveBodyLimit, effectiveMaxRecipients,
+        regularSubjectLimit, regularBodyLimit, regularMaxRecipients,
+        hasPremiumSubjectLimit, hasPremiumBodyLimit, hasPremiumMaxRecipients,
+    } = useSmsSend({ identity, isAuthenticated, sms });
     const [error, setError] = useState(null);
     const [selectedTab, setSelectedTabState] = useState(() => initialView(searchParams)); // 'received', 'sent', 'all', 'conversations'
+    // new messages: show the inbox (the Conversations view shows them itself)
+    const { capturedOldMessagesTimestamp, isMessageNew } = useSmsReadMark(sms, {
+        onCaptured: (inbox) => { if (inbox.unreadCount > 0 && selectedTab !== 'conversations') setSelectedTabState('received'); },
+    });
     const setSelectedTab = (view) => {
         setSelectedTabState(view);
         try { localStorage.setItem(VIEW_KEY, view); } catch (_) { /* no storage */ }
@@ -171,37 +172,12 @@ const SMS = () => {
     const composeBodyRef = useRef(null);
     const [submitting, setSubmitting] = useState(false);
 
-    const [config, setConfig] = useState(null);
-    const [premiumConfig, setPremiumConfig] = useState(null);
     const [selectedMessage, setSelectedMessage] = useState(null);
     const [showMessageModal, setShowMessageModal] = useState(false);
     const [recipientValidation, setRecipientValidation] = useState('');
     const [principalDisplayInfo, setPrincipalDisplayInfo] = useState(new Map());
     const [showMessageDetails, setShowMessageDetails] = useState(false);
     
-    // Premium status
-    const { isPremium } = usePremiumStatus(identity);
-    
-    // Message highlighting: the last-seen mark as it was when the page opened (messages newer than it
-    // stay marked New while the page is open, also those that come in while it is open)
-    const [capturedOldMessagesTimestamp, setCapturedOldMessagesTimestamp] = useState(null);
-    
-    // Effective limits based on premium status
-    const effectiveSubjectLimit = (isPremium && premiumConfig?.premium_max_subject_length) 
-        ? premiumConfig.premium_max_subject_length 
-        : (config?.max_subject_length || 200);
-    const effectiveBodyLimit = (isPremium && premiumConfig?.premium_max_body_length) 
-        ? premiumConfig.premium_max_body_length 
-        : (config?.max_body_length || 5000);
-    const effectiveMaxRecipients = (isPremium && premiumConfig?.premium_max_recipients)
-        ? premiumConfig.premium_max_recipients
-        : (config?.max_recipients || 20);
-    const regularSubjectLimit = config?.max_subject_length || 200;
-    const regularBodyLimit = config?.max_body_length || 5000;
-    const regularMaxRecipients = config?.max_recipients || 20;
-    const hasPremiumSubjectLimit = isPremium && effectiveSubjectLimit > regularSubjectLimit;
-    const hasPremiumBodyLimit = isPremium && effectiveBodyLimit > regularBodyLimit;
-    const hasPremiumMaxRecipients = isPremium && effectiveMaxRecipients > regularMaxRecipients;
 
     // Helper function to truncate subject for header display
     const truncateSubject = (subject, maxLength = 50) => {
@@ -209,22 +185,6 @@ const SMS = () => {
         return subject.substring(0, maxLength) + '...';
     };
 
-    // Helper function to check if a message is new (for highlighting)
-    const isMessageNew = (messageTimestamp) => {
-        const mark = capturedOldMessagesTimestamp ?? sms?.lastSeen;
-        if (mark === null || mark === undefined) return false;
-        return BigInt(messageTimestamp) > BigInt(mark);
-    };
-
-    // Create SMS actor
-    const getSmsActor = () => {
-        if (!identity) return null;
-        // Use the canister ID from environment or fallback to the IC canister ID
-        const canisterId = process.env.CANISTER_ID_SNEED_SMS || 'v33jy-4qaaa-aaaad-absna-cai';
-        return createSmsActor(canisterId, {
-            agentOptions: { identity }
-        });
-    };
 
     // The lists of the current tab, newest first: received, sent, or both (once each)
     const receivedList = sms?.received;
@@ -260,10 +220,6 @@ const SMS = () => {
         try { await sms?.loadOlder(bothKinds ? 'all' : selectedTab); } catch (e) { setError('Failed to load older messages'); } finally { setLoadingOlder(false); }
     };
 
-    useEffect(() => {
-        if (isAuthenticated) fetchConfig();
-    }, [isAuthenticated]);
-
     // opening the page: check for new messages now (and the sent list)
     useEffect(() => {
         if (isAuthenticated) sms?.sync({ includeSent: true });
@@ -271,55 +227,6 @@ const SMS = () => {
     }, [isAuthenticated]);
 
     const shownError = error || (sms?.error && !tabLoaded ? 'Failed to load messages' : null);
-
-    // Fetch SMS config (regular and premium)
-    const fetchConfig = async () => {
-        try {
-            const actor = getSmsActor();
-            if (!actor) return;
-            
-            const [regularConfig, premiumCfg] = await Promise.all([
-                actor.get_config(),
-                actor.get_premium_config().catch(() => null)
-            ]);
-            
-            // Normalize candid nat values (BigInt) into Numbers for safe arithmetic in the UI.
-            // (Otherwise expressions like `effectiveSubjectLimit - subject.length` can throw.)
-            setConfig({
-                ...regularConfig,
-                max_subject_length: Number(regularConfig?.max_subject_length ?? 200),
-                max_body_length: Number(regularConfig?.max_body_length ?? 5000),
-                max_recipients: Number(regularConfig?.max_recipients ?? 20)
-            });
-            if (premiumCfg) {
-                setPremiumConfig({
-                    sneed_premium_canister_id: premiumCfg.sneed_premium_canister_id?.[0]?.toString() || null,
-                    premium_max_subject_length: Number(premiumCfg.premium_max_subject_length),
-                    premium_max_body_length: Number(premiumCfg.premium_max_body_length),
-                    premium_rate_limit_minutes: Number(premiumCfg.premium_rate_limit_minutes ?? 1),
-                    premium_max_recipients: Number(premiumCfg.premium_max_recipients ?? 50)
-                });
-            }
-        } catch (err) {
-            console.error('Error fetching SMS config:', err);
-        }
-    };
-
-    // Last-seen mark: capture it once (as the canister has it) when the page opens, then mark
-    // everything shown as seen, also messages that come in while the page is open and visible
-    useEffect(() => {
-        if (!sms?.lastSeenFresh || capturedOldMessagesTimestamp !== null) return;
-        setCapturedOldMessagesTimestamp(sms.lastSeen ?? 0n);
-        // new messages: show the inbox (the Conversations view shows them itself)
-        if (sms.unreadCount > 0 && selectedTab !== 'conversations') setSelectedTabState('received');
-    }, [sms?.lastSeenFresh, sms?.lastSeen, sms?.unreadCount, capturedOldMessagesTimestamp]);
-
-    const newestReceived = receivedList?.items?.[0]?.created_at ?? null;
-    useEffect(() => {
-        if (capturedOldMessagesTimestamp === null || newestReceived === null) return;
-        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-        sms?.markSeen(newestReceived);
-    }, [capturedOldMessagesTimestamp, newestReceived]);
 
     // Handle reply parameter from URL
     useEffect(() => {
@@ -397,26 +304,6 @@ const SMS = () => {
 
         setPrincipalDisplayInfo(displayInfoMap);
     }, [messages, principalNames, principalNicknames]);
-
-    /// Sends one message (the compose dialog and the Conversations view): { ok: true } or { ok: false, error }.
-    const submitSms = async ({ recipients, subject, body, replyTo = null }) => {
-        const actor = getSmsActor();
-        if (!actor) return { ok: false, error: 'Not signed in' };
-        try {
-            const result = await actor.send_message({
-                recipients: recipients.map((r) => Principal.fromText(String(r).trim())),
-                subject,
-                body,
-                reply_to: replyTo !== null && replyTo !== undefined ? [[BigInt(replyTo)]] : [] // Optional array containing array of BigInt
-            });
-            if (!('ok' in result)) return { ok: false, error: smsErrorText(result.err) };
-            await sms?.sync({ includeSent: true });
-            return { ok: true };
-        } catch (err) {
-            console.error('Error sending message:', err);
-            return { ok: false, error: 'Failed to send message: ' + (err.message || err.toString()) };
-        }
-    };
 
     // Send message
     const sendMessage = async () => {
